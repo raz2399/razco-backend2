@@ -1,5 +1,6 @@
 require('./config/environment');
 const express=require('express'),helmet=require('helmet'),cors=require('cors'),compression=require('compression'),requestId=require('./middleware/requestId'),errorHandler=require('./middleware/errorHandler'),{apiLimiter}=require('./middleware/rateLimiter'),logger=require('./utils/logger'),app=express();
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({origin:function(o,cb){if(!o)return cb(null,true);if(o.includes('netlify.app')||o.includes('localhost')||o.includes('127.0.0.1'))return cb(null,true);cb(new Error('CORS'))},methods:['GET','POST','PUT','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization'],credentials:true}));
 app.use(compression());app.use(express.json({limit:'10mb'}));app.use(express.urlencoded({extended:true,limit:'10mb'}));app.use(requestId);
