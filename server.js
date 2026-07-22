@@ -11,7 +11,7 @@ async function setupDatabase() {
     const tableExists = result.rows[0].exists;
     if (!tableExists) {
       logger.info('[STARTUP] No tables found — running migration...');
-      await require('./database/migrations/001_init.js');
+      await require('./database/migrations/001_initial.js');
       await require('./database/seeds/settings.js');
       logger.info('[STARTUP] Fresh database initialized');
     } else {
