@@ -1,20 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const { getDatabase } = require('../config/database');
+const { get } = require('../config/database');
 const env = require('../config/environment');
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const start = Date.now();
-
-  // Check database
   let dbStatus = 'ok';
   let customerCount = 0;
   try {
-    const db = getDatabase();
-    customerCount = db.prepare('SELECT COUNT(*) as count FROM customers').get().count;
-  } catch (err) {
-    dbStatus = 'error';
-  }
+    const r = await get('SELECT COUNT(*) as count FROM customers');
+    customerCount = parseInt(r.count);
+  } catch (err) { dbStatus = 'error'; }
 
   const uptime = process.uptime();
   const memoryMB = Math.round(process.memoryUsage().rss / 1024 / 1024);
@@ -30,10 +26,7 @@ router.get('/', (req, res) => {
       sms: env.twilio.enabled ? 'configured' : 'not_configured',
       ai: env.openai.enabled ? 'configured' : 'not_configured',
     },
-    stats: {
-      customers: customerCount,
-      memoryMB,
-    },
+    stats: { customers: customerCount, memoryMB },
   });
 });
 
