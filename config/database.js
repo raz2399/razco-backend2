@@ -1,38 +1,35 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
-const env = require('./environment');
-const logger = require('../utils/logger');
+const { Pool } = require('pg');
 
-let db;
+let pool;
 
-function getDatabase() {
-  if (db) return db;
-
-  const dbPath = path.resolve(env.database.path);
-  const dbDir = path.dirname(dbPath);
-
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 10,
+    });
   }
-
-  db = new Database(dbPath);
-
-  // WAL mode: faster writes, better concurrency
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('synchronous = NORMAL');
-  db.pragma('cache_size = 10000');
-  db.pragma('temp_store = MEMORY');
-
-  logger.info(`[DB] Connected: ${dbPath}`);
-
-  // Graceful shutdown
-  process.on('exit', () => db.close());
-  process.on('SIGINT', () => { db.close(); process.exit(0); });
-  process.on('SIGTERM', () => { db.close(); process.exit(0); });
-
-  return db;
+  return pool;
 }
 
-module.exports = { getDatabase };
+async function query(sql, params = []) {
+  return getPool().query(sql, params);
+}
+
+async function all(sql, params = []) {
+  const result = await query(sql, params);
+  return result.rows;
+}
+
+async function get(sql, params = []) {
+  const result = await query(sql, params);
+  return result.rows[0] || null;
+}
+
+async function run(sql, params = []) {
+  const result = await query(sql, params);
+  return { lastID: result.rows[0]?.id || null, changes: result.rowCount };
+}
+
+module.exports = { getPool, query, all, get, run };
