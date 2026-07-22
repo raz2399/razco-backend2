@@ -1,3 +1,4 @@
+require('./config/environment');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -10,44 +11,39 @@ const logger = require('./utils/logger');
 
 const app = express();
 
-// Security headers
 app.use(helmet());
 
-// CORS — only allow frontend origin
 app.use(cors({
-  origin: env.isProduction
-    ? [env.frontend.url]
-    : ['http://localhost:5500', 'http://127.0.0.1:5500', 'http://localhost:3000', env.frontend.url],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, tablets, Postman)
+    if (!origin) return callback(null, true);
+    // Allow all netlify.app domains and localhost
+    if (origin.includes('netlify.app') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
 
-// Compression
 app.use(compression());
-
-// Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Request ID on every request
 app.use(requestId);
 
-// Request logging
 app.use((req, res, next) => {
   logger.info(`[REQ] ${req.method} ${req.path}`, { requestId: req.requestId, ip: req.ip });
   next();
 });
 
-// Global rate limit
 app.use('/api', apiLimiter);
 
-// Routes
 app.use('/api/health',    require('./routes/health'));
 app.use('/api/auth',      require('./routes/auth'));
 app.use('/api/customers', require('./routes/customers'));
 
-// 404
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -56,7 +52,6 @@ app.use((req, res) => {
   });
 });
 
-// Global error handler — must be last
 app.use(errorHandler);
 
 module.exports = app;
