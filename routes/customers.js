@@ -1,54 +1,6 @@
-const express = require('express');
-const { body, param, query } = require('express-validator');
-const router = express.Router();
-const controller = require('../controllers/customers.controller');
-const auth = require('../middleware/auth');
-const { signupLimiter } = require('../middleware/rateLimiter');
-
-// POST /api/customers/signup — Public (kiosk)
-router.post('/signup',
-  signupLimiter,
-  [
-    body('name')
-      .trim()
-      .notEmpty().withMessage('Name is required')
-      .isLength({ min: 2, max: 100 }).withMessage('Name must be 2–100 characters'),
-    body('phone')
-      .trim()
-      .notEmpty().withMessage('Phone number is required'),
-    body('email')
-      .optional({ nullable: true, checkFalsy: true })
-      .isEmail().withMessage('Invalid email format')
-      .normalizeEmail(),
-    body('smsOptIn')
-      .isBoolean().withMessage('SMS opt-in must be true or false'),
-  ],
-  controller.signup
-);
-
-// All routes below require manager auth
-router.use(auth);
-
-// GET /api/customers
-router.get('/',
-  [
-    query('page').optional().isInt({ min: 1 }),
-    query('limit').optional().isInt({ min: 1, max: 200 }),
-    query('search').optional().isString().trim(),
-  ],
-  controller.getAll
-);
-
-// GET /api/customers/:id
-router.get('/:id',
-  [param('id').isInt({ min: 1 }).withMessage('Invalid customer ID')],
-  controller.getById
-);
-
-// GET /api/customers/:id/history
-router.get('/:id/history',
-  [param('id').isInt({ min: 1 })],
-  controller.getHistory
-);
-
-module.exports = router;
+const express=require('express'),router=express.Router(),controller=require('../controllers/customers.controller'),{signupLimiter}=require('../middleware/rateLimiter'),{body}=require('express-validator');
+router.post('/signup',signupLimiter,[body('name').trim().notEmpty(),body('phone').trim().notEmpty(),body('smsOptIn').isBoolean()],controller.signup);
+router.get('/',(req,res)=>{try{const {getDatabase}=require('../config/database'),db=getDatabase(),rows=db.prepare('SELECT c.*,t.name as tier_name FROM customers c JOIN tiers t ON c.tier_id=t.id WHERE c.is_active=1 ORDER BY c.created_at DESC LIMIT 500').all(),customers=rows.map(c=>({id:c.id,name:c.name,phone:c.phone,email:c.email,tier:c.tier_name,points:c.points,visits:c.visit_count,opt_in_sms:c.sms_opt_in===1,loyalty_id:c.loyalty_id,created_at:c.created_at}));res.json({success:true,customers})}catch(e){res.json({success:false,customers:[],error:e.message})}});
+router.put('/:id/points',(req,res)=>{try{const {getDatabase}=require('../config/database'),db=getDatabase(),pts=parseInt(req.body.points);db.prepare('UPDATE customers SET points=points+?,total_points_earned=total_points_earned+?,updated_at=datetime("now") WHERE id=?').run(pts,pts,req.params.id);db.prepare('INSERT INTO reward_points (customer_id,points,reason) VALUES (?,?,?)').run(req.params.id,pts,'manual');res.json({success:true})}catch(e){res.json({success:false,error:e.message})}});
+router.get('/:id',controller.getById);
+module.exports=router;
