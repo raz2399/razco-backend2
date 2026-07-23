@@ -17,8 +17,8 @@ app.use('/api/raffles', require('./routes/raffles'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/flash', require('./routes/flash'));
 app.use('/api/mystery', require('./routes/mystery'));
-app.post('/api/weekly-ad',(req,res)=>res.json({success:true}));
-app.get('/api/weekly-ad',(req,res)=>res.json({success:true,images:[]}));
+app.use('/api/weekly-ad', require('./routes/weeklyAd'));
+
 app.use((req,res)=>res.status(404).json({success:false,error:{code:'NOT_FOUND'}}));
 app.use(errorHandler);
 module.exports=app;
