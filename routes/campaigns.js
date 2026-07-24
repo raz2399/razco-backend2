@@ -29,7 +29,7 @@ router.post('/send-now', async (req, res) => {
     const { title, message, target } = req.body;
     if (!title || !message) return res.json({ success: false, error: 'Required' });
 
-    const customers = await all('SELECT * FROM customers WHERE is_active=true AND sms_opt_in=true');
+    const customers = await all('SELECT * FROM customers WHERE is_active=1 AND sms_opt_in=1');
 
     const r = await query(
       'INSERT INTO campaigns (name,message,audience_type,recipient_count,status,sent_at) VALUES ($1,$2,$3,$4,$5,NOW()) RETURNING id',
