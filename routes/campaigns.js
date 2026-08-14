@@ -1,10 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const { get, all, query } = require('../config/database');
-const twilio = require('twilio');
 
-function getTwilioClient() {
-  return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+async function sendSinchSMS(to, body) {
+  const serviceId = process.env.SINCH_SERVICE_PLAN_ID;
+  const token = process.env.SINCH_API_TOKEN;
+  const from = process.env.SINCH_FROM_NUMBER;
+  const response = await fetch(`https://us.sms.api.sinch.com/xms/v1/${serviceId}/batches`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ from, to: [to], body })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.text || 'Sinch error');
+  return data;
 }
 
 router.get('/', async (req, res) => {
@@ -37,17 +46,12 @@ router.post('/send-now', async (req, res) => {
     );
     const campaignId = r.rows[0].id;
 
-    const client = getTwilioClient();
     let sent = 0, failed = 0;
 
     for (const c of customers) {
       if (!c.phone) continue;
       try {
-        await client.messages.create({
-          body: message,
-          from: process.env.TWILIO_FROM_NUMBER,
-          to: c.phone
-        });
+        await sendSinchSMS(c.phone, message);
         sent++;
       } catch (err) {
         console.error(`SMS failed for ${c.phone}:`, err.message);
