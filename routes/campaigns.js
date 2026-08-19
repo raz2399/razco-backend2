@@ -29,9 +29,12 @@ async function getSinchAccessToken() {
 }
 
 async function sendSinchSMS(to, body, accessToken) {
-  const serviceId = process.env.SINCH_SERVICE_PLAN_ID;
+  // OAuth2 (Key ID/Key Secret) auth requires a different endpoint than the
+  // classic static API Token: the "zt." hostname prefix, and the Project ID
+  // in place of the Service Plan ID. Confirmed against Sinch's own SDK source.
+  const projectId = process.env.SINCH_PROJECT_ID;
   const from = process.env.SINCH_FROM_NUMBER;
-  const response = await fetch(`https://us.sms.api.sinch.com/xms/v1/${serviceId}/batches`, {
+  const response = await fetch(`https://zt.us.sms.api.sinch.com/xms/v1/${projectId}/batches`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
     body: JSON.stringify({ from, to: [to], body })
