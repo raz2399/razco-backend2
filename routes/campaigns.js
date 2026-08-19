@@ -11,10 +11,25 @@ async function sendSinchSMS(to, body) {
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     body: JSON.stringify({ from, to: [to], body })
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.text || 'Sinch error');
+  let data = null;
+  const raw = await response.text();
+  if (raw) { try { data = JSON.parse(raw); } catch (e) { data = null; } }
+  if (!response.ok) throw new Error((data && data.text) || `Sinch error (HTTP ${response.status})`);
   return data;
 }
+
+// Send to exactly one phone number. No database writes, no campaign history entry —
+// this exists purely so a real send can be verified before it goes to the full list.
+router.post('/send-test', async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    if (!phone || !message) return res.json({ success: false, error: 'Phone and message are required' });
+    await sendSinchSMS(phone, message);
+    res.json({ success: true });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
 
 router.get('/', async (req, res) => {
   try {
