@@ -2,13 +2,38 @@ const express = require('express');
 const router = express.Router();
 const { get, all, query } = require('../config/database');
 
-async function sendSinchSMS(to, body) {
+// Sinch Build projects authenticate with Key ID + Key Secret, not a static
+// API Token. We exchange them for a short-lived access token, then use that
+// token to send. One token is fetched per batch and reused for every
+// recipient in that send — not refetched per message.
+async function getSinchAccessToken() {
+  const keyId = process.env.SINCH_KEY_ID;
+  const keySecret = process.env.SINCH_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error('SINCH_KEY_ID / SINCH_KEY_SECRET not set');
+
+  const basicAuth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  const response = await fetch('https://auth.sinch.com/oauth2/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': 'Basic ' + basicAuth
+    },
+    body: 'grant_type=client_credentials'
+  });
+  const raw = await response.text();
+  let data = null;
+  if (raw) { try { data = JSON.parse(raw); } catch (e) { data = null; } }
+  if (!response.ok) throw new Error((data && data.error_description) || `Sinch auth failed (HTTP ${response.status})`);
+  if (!data || !data.access_token) throw new Error('Sinch auth response missing access_token');
+  return data.access_token;
+}
+
+async function sendSinchSMS(to, body, accessToken) {
   const serviceId = process.env.SINCH_SERVICE_PLAN_ID;
-  const token = process.env.SINCH_API_TOKEN;
   const from = process.env.SINCH_FROM_NUMBER;
   const response = await fetch(`https://us.sms.api.sinch.com/xms/v1/${serviceId}/batches`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
     body: JSON.stringify({ from, to: [to], body })
   });
   let data = null;
@@ -24,7 +49,8 @@ router.post('/send-test', async (req, res) => {
   try {
     const { phone, message } = req.body;
     if (!phone || !message) return res.json({ success: false, error: 'Phone and message are required' });
-    await sendSinchSMS(phone, message);
+    const accessToken = await getSinchAccessToken();
+    await sendSinchSMS(phone, message, accessToken);
     res.json({ success: true });
   } catch (err) {
     res.json({ success: false, error: err.message });
@@ -62,11 +88,12 @@ router.post('/send-now', async (req, res) => {
     const campaignId = r.rows[0].id;
 
     let sent = 0, failed = 0;
+    const accessToken = await getSinchAccessToken();
 
     for (const c of customers) {
       if (!c.phone) continue;
       try {
-        await sendSinchSMS(c.phone, message);
+        await sendSinchSMS(c.phone, message, accessToken);
         sent++;
       } catch (err) {
         console.error(`SMS failed for ${c.phone}:`, err.message);
