@@ -23,8 +23,11 @@ async function getSinchAccessToken() {
   const raw = await response.text();
   let data = null;
   if (raw) { try { data = JSON.parse(raw); } catch (e) { data = null; } }
-  if (!response.ok) throw new Error((data && data.error_description) || `Sinch auth failed (HTTP ${response.status})`);
-  if (!data || !data.access_token) throw new Error('Sinch auth response missing access_token');
+  if (!response.ok) {
+    console.error('Sinch OAuth token request failed:', response.status, raw);
+    throw new Error(`Sinch auth failed (HTTP ${response.status}): ${(data && data.error_description) || raw.slice(0, 300) || 'no response body'}`);
+  }
+  if (!data || !data.access_token) throw new Error('Sinch auth response missing access_token: ' + raw.slice(0, 300));
   return data.access_token;
 }
 
@@ -42,7 +45,11 @@ async function sendSinchSMS(to, body, accessToken) {
   let data = null;
   const raw = await response.text();
   if (raw) { try { data = JSON.parse(raw); } catch (e) { data = null; } }
-  if (!response.ok) throw new Error((data && data.text) || `Sinch error (HTTP ${response.status})`);
+  if (!response.ok) {
+    console.error('Sinch SMS send failed:', response.status, raw);
+    const detail = (data && (data.text || data.message || data.error)) || raw.slice(0, 300) || 'no response body';
+    throw new Error(`Sinch error (HTTP ${response.status}): ${detail}`);
+  }
   return data;
 }
 
