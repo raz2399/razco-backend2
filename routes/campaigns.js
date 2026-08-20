@@ -2,6 +2,21 @@ const express = require('express');
 const router = express.Router();
 const { get, all, query } = require('../config/database');
 
+// Customer phone numbers are stored as bare 10-digit US numbers (no country
+// code). Sinch requires full E.164 format (+1XXXXXXXXXX) — without it, a
+// number like 5595869121 gets misread as country code +55 (Brazil) instead
+// of US area code 559, and silently fails delivery despite a 200 OK from
+// the API. This normalizes right before send; storage format is untouched.
+function toE164(raw) {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  if (trimmed.startsWith('+')) return trimmed;
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 10) return '+1' + digits;
+  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+  return null; // not a recognizable US number — caller should skip, not guess
+}
+
 // Sinch Build projects authenticate with Key ID + Key Secret, not a static
 // API Token. We exchange them for a short-lived access token, then use that
 // token to send. One token is fetched per batch and reused for every
@@ -78,7 +93,9 @@ router.post('/send-test', async (req, res) => {
     const { phone, message } = req.body;
     if (!phone || !message) return res.json({ success: false, error: 'Phone and message are required' });
     const accessToken = await getSinchAccessToken();
-    await sendSinchSMS(phone, message, accessToken);
+    const to = toE164(phone);
+    if (!to) return res.json({ success: false, error: `"${phone}" doesn't look like a valid US phone number` });
+    await sendSinchSMS(to, message, accessToken);
     res.json({ success: true });
   } catch (err) {
     res.json({ success: false, error: err.message });
@@ -120,8 +137,14 @@ router.post('/send-now', async (req, res) => {
 
     for (const c of customers) {
       if (!c.phone) continue;
+      const to = toE164(c.phone);
+      if (!to) {
+        console.error(`SMS skipped for ${c.phone}: not a recognizable US number`);
+        failed++;
+        continue;
+      }
       try {
-        await sendSinchSMS(c.phone, message, accessToken);
+        await sendSinchSMS(to, message, accessToken);
         sent++;
       } catch (err) {
         console.error(`SMS failed for ${c.phone}:`, err.message);
