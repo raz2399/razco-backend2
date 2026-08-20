@@ -83,6 +83,7 @@ async function sendSinchSMS(to, body, accessToken) {
     const detail = (data && (data.error && data.error.message)) || raw.slice(0, 300) || 'no response body';
     throw new Error(`Sinch error (HTTP ${response.status}): ${detail}`);
   }
+  console.log(`Sinch SMS accepted for ${to}:`, raw);
   return data;
 }
 
