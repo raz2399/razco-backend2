@@ -32,22 +32,40 @@ async function getSinchAccessToken() {
 }
 
 async function sendSinchSMS(to, body, accessToken) {
-  // OAuth2 (Key ID/Key Secret) auth requires a different endpoint than the
-  // classic static API Token: the "zt." hostname prefix, and the Project ID
-  // in place of the Service Plan ID. Confirmed against Sinch's own SDK source.
+  // Sinch's own docs: new accounts (created via Sinch Build) send SMS through
+  // the Conversation API, not the standalone SMS batches endpoint we were
+  // using before. Different URL, different payload shape entirely.
   const projectId = process.env.SINCH_PROJECT_ID;
+  const appId = process.env.SINCH_APP_ID;
   const from = process.env.SINCH_FROM_NUMBER;
-  const response = await fetch(`https://zt.us.sms.api.sinch.com/xms/v1/${projectId}/batches`, {
+  const url = `https://us.conversation.api.sinch.com/v1/projects/${projectId}/messages:send`;
+
+  const payload = JSON.stringify({
+    app_id: appId,
+    recipient: {
+      identified_by: {
+        channel_identities: [{ channel: 'SMS', identity: to }]
+      }
+    },
+    message: {
+      text_message: { text: body }
+    },
+    channel_properties: {
+      SMS_SENDER: from
+    }
+  });
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
-    body: JSON.stringify({ from, to: [to], body })
+    body: payload
   });
-  let data = null;
   const raw = await response.text();
+  let data = null;
   if (raw) { try { data = JSON.parse(raw); } catch (e) { data = null; } }
   if (!response.ok) {
     console.error('Sinch SMS send failed:', response.status, raw);
-    const detail = (data && (data.text || data.message || data.error)) || raw.slice(0, 300) || 'no response body';
+    const detail = (data && (data.error && data.error.message)) || raw.slice(0, 300) || 'no response body';
     throw new Error(`Sinch error (HTTP ${response.status}): ${detail}`);
   }
   return data;
